@@ -4,7 +4,7 @@ import { api } from '../utils/api';
 
 // ── TYPES ──────────────────────────────────────────────────────────────
 export interface BusinessEntry {
-  _id: string; date: string; revenue: number; expenses: number; profit: number;
+  _id: string; id?: string; date: string; revenue: number; expenses: number; profit: number;
   industry: string; employeeCount: number; customerCount: number;
   adSpend: number; productCount: number; topProduct: string; notes: string;
   currency: string;
@@ -278,18 +278,31 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
   const allFocusItems = analyses.length > 0 ? analyses[analyses.length-1].focusItems : [];
 
   const addEntry = async (d: Omit<BusinessEntry,'_id'>) => {
-    const entry = await api.post('/business/entries', d);
-    setEntries(p => [...p, entry]);
+    const localId = `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const entry: BusinessEntry = { ...d, _id: localId, id: localId };
     const pv = entries[entries.length-1];
     const lk = generateLeaks(entry, pv);
     const fc = generateFocusItems(entry, lk, pv);
-    const analysis = await api.post('/business/analyses', generateAnalysis(entry, pv, lk, fc));
+    const analysis: AnalysisRecord = generateAnalysis(entry, pv, lk, fc);
+    analysis._id = `a-${localId}`;
+    setEntries(p => [...p, entry]);
     setAnalyses(p => [...p, analysis]);
+    try {
+      const saved = await api.post('/business/entries', d);
+      const savedAnalysis = await api.post('/business/analyses', { ...analysis, _id: undefined, entryId: saved._id });
+      setEntries(p => p.map(e => e._id === localId ? saved : e));
+      setAnalyses(p => p.map(a => a._id === analysis._id ? savedAnalysis : a));
+    } catch {
+      console.warn('Offline mode — data saved locally but not persisted to server.');
+    }
   };
 
   const deleteEntry = async (id: string) => {
-    await api.delete(`/business/entries/${id}`);
-    setEntries(p => p.filter(e => e._id !== id));
+    const isLocal = id.startsWith('local-');
+    if (!isLocal) {
+      try { await api.delete(`/business/entries/${id}`); } catch {}
+    }
+    setEntries(p => p.filter(e => e._id !== id && e.id !== id));
     setAnalyses(p => p.filter(a => a.entryId !== id));
   };
 

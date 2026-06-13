@@ -3,6 +3,7 @@ import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import { useBusiness } from '../contexts/BusinessContext';
 import { useAuth, PLAN_LIMITS } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import { industries } from '../data/mockData';
 import { currencies, formatCurrency, getCurrency } from '../data/currencies';
 import { Plus, TrendingUp, Database, AlertCircle, Trash2, Zap } from 'lucide-react';
@@ -10,6 +11,7 @@ import { Plus, TrendingUp, Database, AlertCircle, Trash2, Zap } from 'lucide-rea
 export default function DataEntry({ onNavigate }: { onNavigate?: (page: string) => void }) {
   const { entries, addEntry, deleteEntry, currentAnalysis } = useBusiness();
   const { user } = useAuth();
+  const { toast } = useToast();
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [revenue, setRevenue] = useState('');
   const [expenses, setExpenses] = useState('');
@@ -27,12 +29,12 @@ export default function DataEntry({ onNavigate }: { onNavigate?: (page: string) 
     try { localStorage.setItem('nexora-currency', c); } catch {}
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const rev = parseFloat(revenue);
     const exp = parseFloat(expenses);
     if (isNaN(rev) || isNaN(exp)) return;
-    addEntry({
+    await addEntry({
       date: new Date(date).toISOString(),
       revenue: rev,
       expenses: exp,
@@ -48,6 +50,7 @@ export default function DataEntry({ onNavigate }: { onNavigate?: (page: string) 
     });
     setRevenue(''); setExpenses(''); setEmployeeCount(''); setCustomerCount('');
     setAdSpend(''); setProductCount(''); setTopProduct(''); setNotes('');
+    toast('success', 'Entry added', 'Data saved and analysis updated.');
   };
 
   const planLimit = PLAN_LIMITS[user?.plan || 'free'];
