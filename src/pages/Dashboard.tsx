@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import Card from '../components/ui/Card';
+import { CardSkeleton, ChartSkeleton } from '../components/ui/Skeleton';
 import { useBusiness } from '../contexts/BusinessContext';
 import { useAuth } from '../contexts/AuthContext';
 import { usePlatform } from '../contexts/PlatformContext';
@@ -13,7 +15,55 @@ interface DashboardProps {
 
 export default function Dashboard({ onNavigate }: DashboardProps) {
   const { user } = useAuth();
-  const { entries, currentEntry, currentAnalysis, getGrowthRates } = useBusiness();
+  const { entries, currentEntry, currentAnalysis, getGrowthRates, getTrends, goals, getForecast } = useBusiness();
+  const p4 = usePlatform();
+  const [loading] = useState(false);
+
+  const growth = getGrowthRates();
+  const entry = currentEntry;
+  const chartData = getTrends();
+  const margin = entry ? ((entry.profit / entry.revenue) * 100).toFixed(1) : '0';
+  const leaks = currentAnalysis?.leaks || [];
+  const totalLeakLoss = leaks.reduce((s, l) => s + l.estimatedLoss, 0);
+  const scoreBreakdown = currentAnalysis?.profitScoreBreakdown;
+  const scoreCategories = scoreBreakdown ? [
+    { name: 'Pricing', score: scoreBreakdown.pricing.score, icon: '💰' },
+    { name: 'Marketing', score: scoreBreakdown.marketing.score, icon: '📢' },
+    { name: 'Operations', score: scoreBreakdown.operations.score, icon: '⚙️' },
+    { name: 'Retention', score: scoreBreakdown.retention.score, icon: '🔄' },
+    { name: 'Cash Flow', score: scoreBreakdown.cashFlow.score, icon: '💵' },
+    { name: 'Growth', score: scoreBreakdown.growth.score, icon: '📈' },
+    { name: 'Profitability', score: scoreBreakdown.profitability.score, icon: '⚡' },
+  ] : [];
+  const critAlerts = p4.alerts.filter(a => !a.read && (a.severity === 'critical' || a.severity === 'high'));
+  const activeGoals = goals.filter(g => g.status === 'active');
+  const forecast = getForecast(6);
+  const opportunities = currentAnalysis?.opportunities || [];
+  const topOps = opportunities.slice(0, 3);
+
+  if (loading) {
+    return (
+      <div className="space-y-6 max-w-[1600px] mx-auto animate-pulse">
+        <div className="flex justify-between">
+          <div className="space-y-2">
+            <div className="h-7 w-64 bg-gray-200 dark:bg-gray-800 rounded-lg" />
+            <div className="h-4 w-48 bg-gray-200 dark:bg-gray-800 rounded-lg" />
+          </div>
+          <div className="flex gap-3">
+            <div className="h-9 w-28 bg-gray-200 dark:bg-gray-800 rounded-xl" />
+            <div className="h-9 w-36 bg-gray-200 dark:bg-gray-800 rounded-xl" />
+          </div>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {[1,2,3,4].map(i => <CardSkeleton key={i} />)}
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <ChartSkeleton />
+          <CardSkeleton />
+        </div>
+      </div>
+    );
+  }
 
   if (entries.length === 0) {
     return (
@@ -30,24 +80,6 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
       </div>
     );
   }
-
-  const growth = getGrowthRates();
-  const entry = currentEntry;
-  const chartData = useBusiness().getTrends();
-  const margin = entry ? ((entry.profit / entry.revenue) * 100).toFixed(1) : '0';
-  const leaks = currentAnalysis?.leaks || [];
-  const totalLeakLoss = leaks.reduce((s, l) => s + l.estimatedLoss, 0);
-  const scoreBreakdown = currentAnalysis?.profitScoreBreakdown;
-  const scoreCategories = scoreBreakdown ? [
-    { name: 'Pricing', score: scoreBreakdown.pricing.score, icon: '💰' },
-    { name: 'Marketing', score: scoreBreakdown.marketing.score, icon: '📢' },
-    { name: 'Operations', score: scoreBreakdown.operations.score, icon: '⚙️' },
-    { name: 'Retention', score: scoreBreakdown.retention.score, icon: '🔄' },
-    { name: 'Cash Flow', score: scoreBreakdown.cashFlow.score, icon: '💵' },
-    { name: 'Growth', score: scoreBreakdown.growth.score, icon: '📈' },
-    { name: 'Profitability', score: scoreBreakdown.profitability.score, icon: '⚡' },
-  ] : [];
-
   const currSym = entry ? getCurrency(entry.currency).symbol : '$';
   const metrics = [
     { label: 'Monthly Revenue', value: `${currSym}${entry ? (entry.revenue / 1000).toFixed(0) : '0'}K`, change: growth.revenueGrowth, icon: <DollarSign className="w-5 h-5" />, color: 'from-green-500 to-emerald-600' },
@@ -103,28 +135,23 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
         </div>
       </Card>
 
-      {/* Phase 4: Executive Quick Access */}
-      {(() => {
-        const p4 = usePlatform();
-        const critAlerts = p4.alerts.filter(a => !a.read && (a.severity === 'critical' || a.severity === 'high'));
-        return critAlerts.length > 0 ? (
-          <Card className="!border-amber-200 dark:!border-amber-900/30 !bg-amber-50/50 dark:!bg-amber-950/10">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="font-semibold text-sm flex items-center gap-2"><AlertTriangle className="w-4 h-4 text-amber-500" /> Priority Alerts ({critAlerts.length})</h3>
-              <button onClick={() => onNavigate('alerts')} className="text-xs text-nexora-600 dark:text-nexora-400 font-medium hover:underline">All Alerts →</button>
-            </div>
-            <div className="space-y-2">
-              {critAlerts.slice(0, 3).map(a => (
-                <div key={a.id} className="flex items-center gap-2 text-sm cursor-pointer hover:opacity-80" onClick={() => { p4.markAlertRead(a.id); a.actionRoute && onNavigate(a.actionRoute); }}>
-                  <span className={`w-2 h-2 rounded-full shrink-0 ${a.severity === 'critical' ? 'bg-red-500' : 'bg-amber-500'}`} />
-                  <span className="font-medium flex-1 truncate">{a.title}</span>
-                  <ArrowRight className="w-3 h-3 text-gray-400 shrink-0" />
-                </div>
-              ))}
-            </div>
-          </Card>
-        ) : null;
-      })()}
+      {critAlerts.length > 0 && (
+        <Card className="!border-amber-200 dark:!border-amber-900/30 !bg-amber-50/50 dark:!bg-amber-950/10">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-semibold text-sm flex items-center gap-2"><AlertTriangle className="w-4 h-4 text-amber-500" /> Priority Alerts ({critAlerts.length})</h3>
+            <button onClick={() => onNavigate('alerts')} className="text-xs text-nexora-600 dark:text-nexora-400 font-medium hover:underline">All Alerts →</button>
+          </div>
+          <div className="space-y-2">
+            {critAlerts.slice(0, 3).map(a => (
+              <div key={a.id} className="flex items-center gap-2 text-sm cursor-pointer hover:opacity-80" onClick={() => { p4.markAlertRead(a.id); a.actionRoute && onNavigate(a.actionRoute); }}>
+                <span className={`w-2 h-2 rounded-full shrink-0 ${a.severity === 'critical' ? 'bg-red-500' : 'bg-amber-500'}`} />
+                <span className="font-medium flex-1 truncate">{a.title}</span>
+                <ArrowRight className="w-3 h-3 text-gray-400 shrink-0" />
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
 
 
 
@@ -325,16 +352,7 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
         </div>
       </Card>
 
-      {/* Phase 3: Goals Progress */}
-      {(() => {
-        const { goals, getForecast, currentAnalysis: ca } = useBusiness();
-        const activeGoals = goals.filter(g => g.status === 'active');
-        const forecast = getForecast(6);
-        const opportunities = ca?.opportunities || [];
-        const topOps = opportunities.slice(0, 3);
-
-        return (<>
-          {activeGoals.length > 0 && (
+      {activeGoals.length > 0 && (
             <Card>
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-semibold flex items-center gap-2"><CheckCircle2 className="w-5 h-5 text-green-500" /> Goals Progress</h3>
@@ -406,8 +424,6 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
               </div>
             </Card>
           )}
-        </>);
-      })()}
     </div>
   );
 }

@@ -1,4 +1,5 @@
-import { useState, ReactNode } from 'react';
+import { useState, ReactNode, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useBusiness } from '../../contexts/BusinessContext';
@@ -51,15 +52,36 @@ export default function DashboardLayout({ children, currentPage, onNavigate }: D
 
   const unreadAlerts = platform.unreadCount;
 
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && sidebarOpen) setSidebarOpen(false);
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        document.getElementById('global-search')?.focus();
+      }
+    };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [sidebarOpen]);
+
   return (
     <div className="min-h-screen flex">
       {/* Mobile Overlay */}
-      {sidebarOpen && (
-        <div className="fixed inset-0 bg-black/50 z-40 lg:hidden" onClick={() => setSidebarOpen(false)} />
-      )}
+      <AnimatePresence>
+        {sidebarOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="fixed inset-0 bg-black/50 z-40 lg:hidden backdrop-blur-sm"
+            onClick={() => setSidebarOpen(false)}
+          />
+        )}
+      </AnimatePresence>
 
       {/* Sidebar */}
-      <aside className={`fixed lg:static inset-y-0 left-0 z-50 w-64 bg-gray-50 dark:bg-gray-900 border-r border-gray-200/60 dark:border-gray-700/40 transform transition-transform duration-300 lg:transform-none ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'} flex flex-col`}>
+      <aside className={`fixed lg:static inset-y-0 left-0 z-50 w-64 bg-gray-50 dark:bg-gray-900 border-r border-gray-200/60 dark:border-gray-700/40 flex flex-col transition-transform duration-300 ease-out lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="p-4 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 gradient-bg rounded-lg flex items-center justify-center">
@@ -145,7 +167,8 @@ export default function DashboardLayout({ children, currentPage, onNavigate }: D
             </button>
             <div className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-xl bg-gray-100 dark:bg-gray-800 w-64">
               <Search className="w-4 h-4 text-gray-400" />
-              <input type="text" placeholder="Search anything..." className="bg-transparent text-sm outline-none w-full placeholder-gray-400" />
+              <input id="global-search" type="text" placeholder="Search anything..." className="bg-transparent text-sm outline-none w-full placeholder-gray-400" />
+              <kbd className="hidden lg:inline-flex text-[10px] px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-700 text-gray-400 font-medium">⌘K</kbd>
             </div>
           </div>
 

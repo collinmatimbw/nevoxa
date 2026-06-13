@@ -1,8 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { BusinessProvider } from './contexts/BusinessContext';
 import { PlatformProvider } from './contexts/PlatformContext';
+import { ToastProvider } from './contexts/ToastContext';
 import LandingPage from './pages/LandingPage';
 import AuthPages from './pages/AuthPages';
 import Onboarding from './pages/Onboarding';
@@ -25,12 +27,24 @@ import ProfitScorePage from './pages/ProfitScorePage';
 import DataEntry from './pages/DataEntry';
 import AdminDashboard from './pages/AdminDashboard';
 import UpgradePage from './pages/UpgradePage';
-// Phase 4
-
 import TeamPage from './pages/TeamPage';
 import BillingPage from './pages/BillingPage';
 import AutomationsPage from './pages/AutomationsPage';
 import AlertsPage from './pages/AlertsPage';
+
+const pageVariants = {
+  initial: { opacity: 0, y: 12 },
+  animate: { opacity: 1, y: 0, transition: { duration: 0.3, ease: 'easeOut' } },
+  exit: { opacity: 0, y: -12, transition: { duration: 0.2, ease: 'easeIn' } },
+};
+
+function AnimatedPage({ children }: { children: React.ReactNode }) {
+  return (
+    <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit">
+      {children}
+    </motion.div>
+  );
+}
 
 function AppContent() {
   const { isAuthenticated, user } = useAuth();
@@ -43,17 +57,26 @@ function AppContent() {
     }
   }, [user, currentPage]);
 
-  if (!isAuthenticated) {
-    switch (currentPage) {
-      case 'login': return <AuthPages mode="login" onNavigate={handleNavigate} />;
-      case 'signup': return <AuthPages mode="signup" onNavigate={handleNavigate} />;
-      case 'onboarding': return <Onboarding onNavigate={handleNavigate} />;
-      default: return <LandingPage onNavigate={handleNavigate} />;
+  const renderPage = (page: string) => {
+    const key = `${page}-${Date.now()}`;
+    switch (page) {
+      case 'login': return <AnimatedPage key="login"><AuthPages mode="login" onNavigate={handleNavigate} /></AnimatedPage>;
+      case 'signup': return <AnimatedPage key="signup"><AuthPages mode="signup" onNavigate={handleNavigate} /></AnimatedPage>;
+      case 'onboarding': return <AnimatedPage key="onboarding"><Onboarding onNavigate={handleNavigate} /></AnimatedPage>;
+      default: return <AnimatedPage key="landing"><LandingPage onNavigate={handleNavigate} /></AnimatedPage>;
     }
-  }
-  if (currentPage === 'onboarding') return <Onboarding onNavigate={handleNavigate} />;
+  };
 
-  const pages: Record<string, React.ReactNode> = {
+  if (!isAuthenticated) {
+    return (
+      <AnimatePresence mode="wait">
+        {renderPage(currentPage)}
+      </AnimatePresence>
+    );
+  }
+  if (currentPage === 'onboarding') return <AnimatedPage key="onboarding"><Onboarding onNavigate={handleNavigate} /></AnimatedPage>;
+
+  const pageComponents: Record<string, React.ReactNode> = {
     dashboard: <Dashboard onNavigate={handleNavigate} />,
     score: <ProfitScorePage />,
     data: <DataEntry onNavigate={handleNavigate} />,
@@ -80,7 +103,11 @@ function AppContent() {
 
   return (
     <DashboardLayout currentPage={currentPage} onNavigate={handleNavigate}>
-      {pages[currentPage] || pages.dashboard}
+      <AnimatePresence mode="wait">
+        <motion.div key={currentPage} variants={pageVariants} initial="initial" animate="animate" exit="exit">
+          {pageComponents[currentPage] || pageComponents.dashboard}
+        </motion.div>
+      </AnimatePresence>
     </DashboardLayout>
   );
 }
@@ -91,7 +118,9 @@ export default function App() {
       <AuthProvider>
         <BusinessProvider>
           <PlatformProvider>
-            <AppContent />
+            <ToastProvider>
+              <AppContent />
+            </ToastProvider>
           </PlatformProvider>
         </BusinessProvider>
       </AuthProvider>

@@ -1,9 +1,10 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { getCurrency } from '../data/currencies';
+import { api } from '../utils/api';
 
 // ── TYPES ──────────────────────────────────────────────────────────────
 export interface BusinessEntry {
-  id: string; date: string; revenue: number; expenses: number; profit: number;
+  _id: string; date: string; revenue: number; expenses: number; profit: number;
   industry: string; employeeCount: number; customerCount: number;
   adSpend: number; productCount: number; topProduct: string; notes: string;
   currency: string;
@@ -38,11 +39,11 @@ export interface Opportunity {
   id: string; category: 'revenue' | 'cost' | 'pricing' | 'retention' | 'marketing';
   title: string; description: string; potentialImpact: number;
   ease: 'easy' | 'moderate' | 'hard'; timeToResults: string;
-  priority: number; // 1-10
+  priority: number;
 }
 
 export interface Goal {
-  id: string; title: string; type: 'revenue' | 'profit' | 'expenses' | 'retention' | 'growth' | 'custom';
+  _id: string; title: string; type: 'revenue' | 'profit' | 'expenses' | 'retention' | 'growth' | 'custom';
   targetValue: number; currentValue: number; unit: string;
   deadline: string; createdAt: string; status: 'active' | 'completed' | 'missed';
 }
@@ -66,15 +67,12 @@ export interface IndustryBenchmark {
 }
 
 export interface AnalysisRecord {
-  id: string; entryId: string; date: string;
+  _id: string; entryId: string; date: string;
   profitScore: number; profitScoreBreakdown: ProfitScoreBreakdown;
   revenueGrowth: number; expenseGrowth: number; profitGrowth: number; profitMargin: number;
   summary: string; leaks: LeakFinding[]; focusItems: FocusItem[];
   opportunities: Opportunity[];
 }
-
-// ── SEED DATA (empty — user enters their own) ──────────────────────────
-const seedEntries: BusinessEntry[] = [];
 
 // ── INDUSTRY BENCHMARKS ────────────────────────────────────────────────
 export const industryBenchmarks: Record<string, IndustryBenchmark> = {
@@ -98,28 +96,29 @@ const generateLeaks = (entry: BusinessEntry, prev?: BusinessEntry): LeakFinding[
   const adRatio = entry.adSpend / entry.revenue;
   const bench = industryBenchmarks[entry.industry] || industryBenchmarks.SaaS;
   const targetMargin = bench.avgMargin / 100;
+  const id = entry._id;
 
   if (adRatio > bench.avgAdRatio / 100 * 1.2) {
-    leaks.push({ id:`lk-${entry.id}-1`, entryId:entry.id, category:'marketing', problem:`Ad spend is ${(adRatio*100).toFixed(1)}% of revenue — above ${bench.industry} benchmark of ${bench.avgAdRatio}%`, impact: adRatio > bench.avgAdRatio/100*1.5 ? 'high' : 'medium', estimatedLoss:Math.round(entry.adSpend*0.3), recommendation:'Audit underperforming channels. Shift budget to high-ROAS campaigns.', status:'open', detectedAt:entry.date });
+    leaks.push({ id:`lk-${id}-1`, entryId:id, category:'marketing', problem:`Ad spend is ${(adRatio*100).toFixed(1)}% of revenue — above ${bench.industry} benchmark of ${bench.avgAdRatio}%`, impact: adRatio > bench.avgAdRatio/100*1.5 ? 'high' : 'medium', estimatedLoss:Math.round(entry.adSpend*0.3), recommendation:'Audit underperforming channels. Shift budget to high-ROAS campaigns.', status:'open', detectedAt:entry.date });
   }
   if (prev && entry.expenses > prev.expenses * 1.08) {
-    leaks.push({ id:`lk-${entry.id}-2`, entryId:entry.id, category:'expenses', problem:`Expenses grew ${((entry.expenses-prev.expenses)/prev.expenses*100).toFixed(1)}% MoM — faster than revenue`, impact:'high', estimatedLoss:Math.round(entry.expenses-prev.expenses*1.05), recommendation:'Review new expense items. Defer non-essential spending.', status:'open', detectedAt:entry.date });
+    leaks.push({ id:`lk-${id}-2`, entryId:id, category:'expenses', problem:`Expenses grew ${((entry.expenses-prev.expenses)/prev.expenses*100).toFixed(1)}% MoM — faster than revenue`, impact:'high', estimatedLoss:Math.round(entry.expenses-prev.expenses*1.05), recommendation:'Review new expense items. Defer non-essential spending.', status:'open', detectedAt:entry.date });
   }
   if (margin < targetMargin) {
-    leaks.push({ id:`lk-${entry.id}-3`, entryId:entry.id, category:'revenue', problem:`Profit margin ${(margin*100).toFixed(1)}% — below ${bench.industry} target of ${bench.avgMargin}%`, impact:'high', estimatedLoss:Math.round(entry.revenue*(targetMargin-margin)), recommendation:'Evaluate pricing strategy or reduce COGS.', status:'open', detectedAt:entry.date });
+    leaks.push({ id:`lk-${id}-3`, entryId:id, category:'revenue', problem:`Profit margin ${(margin*100).toFixed(1)}% — below ${bench.industry} target of ${bench.avgMargin}%`, impact:'high', estimatedLoss:Math.round(entry.revenue*(targetMargin-margin)), recommendation:'Evaluate pricing strategy or reduce COGS.', status:'open', detectedAt:entry.date });
   }
   if (entry.customerCount > 0 && entry.revenue/entry.customerCount < 80) {
-    leaks.push({ id:`lk-${entry.id}-4`, entryId:entry.id, category:'revenue', problem:`ARPU is ${cs(entry)}${(entry.revenue/entry.customerCount).toFixed(0)}/mo — below ${cs(entry)}80 target`, impact:'medium', estimatedLoss:Math.round((80-entry.revenue/entry.customerCount)*entry.customerCount), recommendation:'Upsell higher tiers. Add usage-based pricing.', status:'open', detectedAt:entry.date });
+    leaks.push({ id:`lk-${id}-4`, entryId:id, category:'revenue', problem:`ARPU is ${cs(entry)}${(entry.revenue/entry.customerCount).toFixed(0)}/mo — below ${cs(entry)}80 target`, impact:'medium', estimatedLoss:Math.round((80-entry.revenue/entry.customerCount)*entry.customerCount), recommendation:'Upsell higher tiers. Add usage-based pricing.', status:'open', detectedAt:entry.date });
   }
   if (entry.employeeCount > 0 && entry.revenue/entry.employeeCount < bench.avgRevenuePerEmployee*0.8) {
-    leaks.push({ id:`lk-${entry.id}-5`, entryId:entry.id, category:'staffing', problem:`Revenue/employee ${cs(entry)}${(entry.revenue/entry.employeeCount).toFixed(0)}/mo — below ${cs(entry)}${bench.avgRevenuePerEmployee} benchmark`, impact:'medium', estimatedLoss:Math.round((bench.avgRevenuePerEmployee*0.8-entry.revenue/entry.employeeCount)*entry.employeeCount), recommendation:'Automate tasks or redistribute workload.', status:'open', detectedAt:entry.date });
+    leaks.push({ id:`lk-${id}-5`, entryId:id, category:'staffing', problem:`Revenue/employee ${cs(entry)}${(entry.revenue/entry.employeeCount).toFixed(0)}/mo — below ${cs(entry)}${bench.avgRevenuePerEmployee} benchmark`, impact:'medium', estimatedLoss:Math.round((bench.avgRevenuePerEmployee*0.8-entry.revenue/entry.employeeCount)*entry.employeeCount), recommendation:'Automate tasks or redistribute workload.', status:'open', detectedAt:entry.date });
   }
   if (entry.productCount >= 5) {
-    leaks.push({ id:`lk-${entry.id}-6`, entryId:entry.id, category:'products', problem:`${entry.productCount} products may spread resources thin`, impact:'low', estimatedLoss:Math.round(entry.revenue*0.03), recommendation:'Sunset products below 5% revenue contribution.', status:'open', detectedAt:entry.date });
+    leaks.push({ id:`lk-${id}-6`, entryId:id, category:'products', problem:`${entry.productCount} products may spread resources thin`, impact:'low', estimatedLoss:Math.round(entry.revenue*0.03), recommendation:'Sunset products below 5% revenue contribution.', status:'open', detectedAt:entry.date });
   }
   const opsCost = entry.expenses - entry.adSpend;
   if (opsCost/entry.revenue > 0.35) {
-    leaks.push({ id:`lk-${entry.id}-7`, entryId:entry.id, category:'operations', problem:`Operating costs ${((opsCost/entry.revenue)*100).toFixed(1)}% of revenue — above 35% threshold`, impact:'medium', estimatedLoss:Math.round(opsCost-entry.revenue*0.35), recommendation:'Review subscriptions and overhead.', status:'open', detectedAt:entry.date });
+    leaks.push({ id:`lk-${id}-7`, entryId:id, category:'operations', problem:`Operating costs ${((opsCost/entry.revenue)*100).toFixed(1)}% of revenue — above 35% threshold`, impact:'medium', estimatedLoss:Math.round(opsCost-entry.revenue*0.35), recommendation:'Review subscriptions and overhead.', status:'open', detectedAt:entry.date });
   }
   return leaks;
 };
@@ -127,16 +126,17 @@ const generateLeaks = (entry: BusinessEntry, prev?: BusinessEntry): LeakFinding[
 const generateFocusItems = (entry: BusinessEntry, leaks: LeakFinding[], prev?: BusinessEntry): FocusItem[] => {
   const items: FocusItem[] = [];
   const now = entry.date;
+  const id = entry._id;
   leaks.filter(l => l.impact === 'high' && l.category === 'marketing').forEach(l => {
     items.push({ id:`f-stop-${l.id}`, type:'stop', action:'Stop spending on low-ROAS advertising channels', reasoning:l.problem, impact:`Save ~${cs(entry)}${l.estimatedLoss.toLocaleString()}/mo`, priority:'high', createdAt:now });
   });
-  if (leaks.find(l => l.category === 'products')) items.push({ id:`f-stop-prod-${entry.id}`, type:'stop', action:'Stop investing in underperforming products', reasoning:'Products diluting focus', impact:'Recover bandwidth', priority:'medium', createdAt:now });
-  if (prev && entry.revenue > prev.revenue) items.push({ id:`f-keep-rev-${entry.id}`, type:'keep', action:`Keep sales strategy — revenue grew ${((entry.revenue-prev.revenue)/prev.revenue*100).toFixed(1)}%`, reasoning:'Upward trajectory', impact:`${cs(entry)}${entry.revenue.toLocaleString()}/mo`, priority:'high', createdAt:now });
-  if (prev && entry.customerCount > prev.customerCount) items.push({ id:`f-keep-cust-${entry.id}`, type:'keep', action:`Keep acquisition efforts — added ${entry.customerCount-prev.customerCount} customers`, reasoning:'Growing customer base', impact:`${entry.customerCount} total`, priority:'high', createdAt:now });
-  items.push({ id:`f-keep-core-${entry.id}`, type:'keep', action:`Keep ${entry.topProduct} as priority`, reasoning:'Top revenue driver', impact:'Core revenue', priority:'critical', createdAt:now });
-  if (entry.adSpend/entry.revenue > 0.10) items.push({ id:`f-imp-ads-${entry.id}`, type:'improve', action:'Improve ad spend efficiency', reasoning:`Ad ratio ${(entry.adSpend/entry.revenue*100).toFixed(1)}%`, impact:`Save ${cs(entry)}${Math.round(entry.adSpend*0.2).toLocaleString()}/mo`, priority:'high', createdAt:now });
-  if (entry.employeeCount > 10) items.push({ id:`f-imp-auto-${entry.id}`, type:'improve', action:'Automate repetitive tasks', reasoning:`${entry.employeeCount} employees`, impact:'15-20 hrs/week saved', priority:'medium', createdAt:now });
-  items.push({ id:`f-imp-price-${entry.id}`, type:'improve', action:'Benchmark pricing vs competitors', reasoning:'Quarterly review', impact:'10-20% margin potential', priority:'high', createdAt:now });
+  if (leaks.find(l => l.category === 'products')) items.push({ id:`f-stop-prod-${id}`, type:'stop', action:'Stop investing in underperforming products', reasoning:'Products diluting focus', impact:'Recover bandwidth', priority:'medium', createdAt:now });
+  if (prev && entry.revenue > prev.revenue) items.push({ id:`f-keep-rev-${id}`, type:'keep', action:`Keep sales strategy — revenue grew ${((entry.revenue-prev.revenue)/prev.revenue*100).toFixed(1)}%`, reasoning:'Upward trajectory', impact:`${cs(entry)}${entry.revenue.toLocaleString()}/mo`, priority:'high', createdAt:now });
+  if (prev && entry.customerCount > prev.customerCount) items.push({ id:`f-keep-cust-${id}`, type:'keep', action:'Keep acquisition efforts — added customers', reasoning:'Growing customer base', impact:`${entry.customerCount} total`, priority:'high', createdAt:now });
+  items.push({ id:`f-keep-core-${id}`, type:'keep', action:`Keep ${entry.topProduct} as priority`, reasoning:'Top revenue driver', impact:'Core revenue', priority:'critical', createdAt:now });
+  if (entry.adSpend/entry.revenue > 0.10) items.push({ id:`f-imp-ads-${id}`, type:'improve', action:'Improve ad spend efficiency', reasoning:`Ad ratio ${(entry.adSpend/entry.revenue*100).toFixed(1)}%`, impact:`Save ${cs(entry)}${Math.round(entry.adSpend*0.2).toLocaleString()}/mo`, priority:'high', createdAt:now });
+  if (entry.employeeCount > 10) items.push({ id:`f-imp-auto-${id}`, type:'improve', action:'Automate repetitive tasks', reasoning:`${entry.employeeCount} employees`, impact:'15-20 hrs/week saved', priority:'medium', createdAt:now });
+  items.push({ id:`f-imp-price-${id}`, type:'improve', action:'Benchmark pricing vs competitors', reasoning:'Quarterly review', impact:'10-20% margin potential', priority:'high', createdAt:now });
   return items;
 };
 
@@ -176,49 +176,43 @@ const generateOpportunities = (entry: BusinessEntry, prev?: BusinessEntry, _leak
   const ops: Opportunity[] = [];
   const bench = industryBenchmarks[entry.industry] || industryBenchmarks.SaaS;
   const margin = (entry.profit/entry.revenue)*100;
+  const id = entry._id;
 
-  if (margin < bench.avgMargin) ops.push({ id:`op-price-${entry.id}`, category:'pricing', title:'Pricing optimization', description:`Your margin (${margin.toFixed(1)}%) is below the ${bench.avgMargin}% ${bench.industry} average. A 10% price increase could add ${cs(entry)}${Math.round(entry.revenue*0.08).toLocaleString()}/mo in profit.`, potentialImpact:Math.round(entry.revenue*0.08), ease:'moderate', timeToResults:'30-60 days', priority:9 });
-  if (entry.adSpend/entry.revenue > bench.avgAdRatio/100) ops.push({ id:`op-mktg-${entry.id}`, category:'marketing', title:'Marketing channel optimization', description:`Shift ad spend from low-ROAS to high-ROAS channels. Reallocating 30% of budget could improve ROI by 2-3x.`, potentialImpact:Math.round(entry.adSpend*0.25), ease:'easy', timeToResults:'14-30 days', priority:8 });
-  ops.push({ id:`op-upsell-${entry.id}`, category:'revenue', title:'Customer upselling program', description:`With ${entry.customerCount} customers, a 10% upsell rate at 50% higher ARPU adds ${cs(entry)}${Math.round(entry.revenue*0.05).toLocaleString()}/mo.`, potentialImpact:Math.round(entry.revenue*0.05), ease:'moderate', timeToResults:'30-60 days', priority:7 });
+  if (margin < bench.avgMargin) ops.push({ id:`op-price-${id}`, category:'pricing', title:'Pricing optimization', description:`Your margin (${margin.toFixed(1)}%) is below the ${bench.avgMargin}% ${bench.industry} average. A 10% price increase could add ${cs(entry)}${Math.round(entry.revenue*0.08).toLocaleString()}/mo in profit.`, potentialImpact:Math.round(entry.revenue*0.08), ease:'moderate', timeToResults:'30-60 days', priority:9 });
+  if (entry.adSpend/entry.revenue > bench.avgAdRatio/100) ops.push({ id:`op-mktg-${id}`, category:'marketing', title:'Marketing channel optimization', description:`Shift ad spend from low-ROAS to high-ROAS channels.`, potentialImpact:Math.round(entry.adSpend*0.25), ease:'easy', timeToResults:'14-30 days', priority:8 });
+  ops.push({ id:`op-upsell-${id}`, category:'revenue', title:'Customer upselling program', description:`With ${entry.customerCount} customers, a 10% upsell rate at 50% higher ARPU adds ${cs(entry)}${Math.round(entry.revenue*0.05).toLocaleString()}/mo.`, potentialImpact:Math.round(entry.revenue*0.05), ease:'moderate', timeToResults:'30-60 days', priority:7 });
   if (prev && entry.customerCount > 0) {
     const churnEst = prev.customerCount > 0 ? Math.max(0, 1-(entry.customerCount-30)/(prev.customerCount)) : 0.05;
-    if (churnEst > 0.03) ops.push({ id:`op-ret-${entry.id}`, category:'retention', title:'Churn reduction program', description:`Estimated churn ~${(churnEst*100).toFixed(1)}%. Reducing by 2 points retains ~${Math.round(entry.customerCount*0.02)} customers (${cs(entry)}${Math.round(entry.revenue/entry.customerCount*entry.customerCount*0.02).toLocaleString()}/mo).`, potentialImpact:Math.round(entry.revenue*0.02), ease:'moderate', timeToResults:'60-90 days', priority:7 });
+    if (churnEst > 0.03) ops.push({ id:`op-ret-${id}`, category:'retention', title:'Churn reduction program', description:`Estimated churn ~${(churnEst*100).toFixed(1)}%. Reducing by 2 points retains ~${Math.round(entry.customerCount*0.02)} customers.`, potentialImpact:Math.round(entry.revenue*0.02), ease:'moderate', timeToResults:'60-90 days', priority:7 });
   }
-  ops.push({ id:`op-cost-${entry.id}`, category:'cost', title:'Expense optimization audit', description:`A 5% reduction in non-ad expenses saves ${cs(entry)}${Math.round((entry.expenses-entry.adSpend)*0.05).toLocaleString()}/mo through subscription consolidation and process efficiency.`, potentialImpact:Math.round((entry.expenses-entry.adSpend)*0.05), ease:'easy', timeToResults:'7-14 days', priority:6 });
-  ops.push({ id:`op-auto-${entry.id}`, category:'cost', title:'Automation investment', description:`Automating invoicing, onboarding, and reporting could save 20+ hours/week (est. ${cs(entry)}${Math.round(entry.expenses*0.03).toLocaleString()}/mo in labor costs).`, potentialImpact:Math.round(entry.expenses*0.03), ease:'hard', timeToResults:'60-90 days', priority:5 });
+  ops.push({ id:`op-cost-${id}`, category:'cost', title:'Expense optimization audit', description:`A 5% reduction in non-ad expenses saves ${cs(entry)}${Math.round((entry.expenses-entry.adSpend)*0.05).toLocaleString()}/mo.`, potentialImpact:Math.round((entry.expenses-entry.adSpend)*0.05), ease:'easy', timeToResults:'7-14 days', priority:6 });
+  ops.push({ id:`op-auto-${id}`, category:'cost', title:'Automation investment', description:`Automating invoicing, onboarding, and reporting could save 20+ hours/week.`, potentialImpact:Math.round(entry.expenses*0.03), ease:'hard', timeToResults:'60-90 days', priority:5 });
   bench.tips.slice(0,2).forEach((tip,i) => {
-    ops.push({ id:`op-ind-${entry.id}-${i}`, category: i===0?'revenue':'pricing', title:`${bench.industry} insight: ${tip.substring(0,40)}`, description:tip, potentialImpact:Math.round(entry.revenue*0.02), ease:'moderate', timeToResults:'30-90 days', priority:4 });
+    ops.push({ id:`op-ind-${id}-${i}`, category: i===0?'revenue':'pricing', title:`${bench.industry} insight: ${tip.substring(0,40)}`, description:tip, potentialImpact:Math.round(entry.revenue*0.02), ease:'moderate', timeToResults:'30-90 days', priority:4 });
   });
   return ops.sort((a,b)=>b.priority-a.priority);
 };
 
 const generateActionPlan = (entry: BusinessEntry, leaks: LeakFinding[], _opps: Opportunity[], bench: IndustryBenchmark): ActionPlan => {
   const plan: ActionPlan = { sevenDay:[], thirtyDay:[], ninetyDay:[], longTerm:[] };
-  // 7-Day
   plan.sevenDay.push({ id:'7d-1', task:'Audit all marketing channels — pause anything below 2x ROAS', priority:'critical', expectedImpact:`Save ${cs(entry)}${Math.round(entry.adSpend*0.15).toLocaleString()}/mo`, difficulty:'easy', estimatedTime:'2-3 hours', category:'Marketing' });
   plan.sevenDay.push({ id:'7d-2', task:'Review and cancel duplicate software subscriptions', priority:'high', expectedImpact:`${cs(entry)}200-${cs(entry)}500/mo savings`, difficulty:'easy', estimatedTime:'1 hour', category:'Operations' });
   plan.sevenDay.push({ id:'7d-3', task:'Benchmark pricing against top 3 competitors', priority:'high', expectedImpact:'Identify 10-25% pricing gap', difficulty:'easy', estimatedTime:'2-3 hours', category:'Pricing' });
   if (leaks.length > 0) plan.sevenDay.push({ id:'7d-4', task:`Fix top profit leak: "${leaks[0].problem.substring(0,60)}"`, priority:'critical', expectedImpact:`Recover ${cs(entry)}${leaks[0].estimatedLoss.toLocaleString()}/mo`, difficulty:'medium', estimatedTime:'4-8 hours', category:'Profit Recovery' });
   plan.sevenDay.push({ id:'7d-5', task:'Set up automated weekly KPI reporting', priority:'medium', expectedImpact:'2 hrs/week saved', difficulty:'easy', estimatedTime:'1-2 hours', category:'Operations' });
-
-  // 30-Day
-  plan.thirtyDay.push({ id:'30d-1', task:`Implement ${bench.industry}-specific optimization: ${bench.tips[0]}`, priority:'high', expectedImpact:`+${cs(entry)}${Math.round(entry.revenue*0.03).toLocaleString()}/mo potential`, difficulty:'medium', estimatedTime:'1-2 weeks', category:'Strategy' });
-  plan.thirtyDay.push({ id:'30d-2', task:'Launch customer upselling campaign to existing base', priority:'high', expectedImpact:`+${cs(entry)}${Math.round(entry.revenue*0.05).toLocaleString()}/mo`, difficulty:'medium', estimatedTime:'1 week', category:'Revenue' });
-  plan.thirtyDay.push({ id:'30d-3', task:'Implement one key automation (invoicing or onboarding)', priority:'medium', expectedImpact:'10+ hrs/week saved', difficulty:'medium', estimatedTime:'1-2 weeks', category:'Operations' });
+  plan.thirtyDay.push({ id:'30d-1', task:`Implement ${bench.industry}-specific optimization: ${bench.tips[0]}`, priority:'high', expectedImpact:`+${cs(entry)}${Math.round(entry.revenue*0.03).toLocaleString()}/mo`, difficulty:'medium', estimatedTime:'1-2 weeks', category:'Strategy' });
+  plan.thirtyDay.push({ id:'30d-2', task:'Launch customer upselling campaign', priority:'high', expectedImpact:`+${cs(entry)}${Math.round(entry.revenue*0.05).toLocaleString()}/mo`, difficulty:'medium', estimatedTime:'1 week', category:'Revenue' });
+  plan.thirtyDay.push({ id:'30d-3', task:'Implement one key automation', priority:'medium', expectedImpact:'10+ hrs/week saved', difficulty:'medium', estimatedTime:'1-2 weeks', category:'Operations' });
   plan.thirtyDay.push({ id:'30d-4', task:'Design and launch customer feedback survey', priority:'medium', expectedImpact:'Reduce churn by 1-2%', difficulty:'easy', estimatedTime:'3-4 hours', category:'Retention' });
-  plan.thirtyDay.push({ id:'30d-5', task:'A/B test pricing page with new tier structure', priority:'high', expectedImpact:'+5-15% conversion', difficulty:'medium', estimatedTime:'1 week', category:'Pricing' });
-
-  // 90-Day
+  plan.thirtyDay.push({ id:'30d-5', task:'A/B test pricing page', priority:'high', expectedImpact:'+5-15% conversion', difficulty:'medium', estimatedTime:'1 week', category:'Pricing' });
   plan.ninetyDay.push({ id:'90d-1', task:'Achieve profit margin above industry benchmark', priority:'critical', expectedImpact:`Reach ${bench.avgMargin}%+ margin`, difficulty:'hard', estimatedTime:'Full quarter', category:'Profitability' });
-  plan.ninetyDay.push({ id:'90d-2', task:'Build and launch customer loyalty/referral program', priority:'high', expectedImpact:'+15-25% organic acquisition', difficulty:'hard', estimatedTime:'4-6 weeks', category:'Growth' });
-  plan.ninetyDay.push({ id:'90d-3', task:`Scale highest-ROAS channel by 50%`, priority:'high', expectedImpact:`+${cs(entry)}${Math.round(entry.revenue*0.08).toLocaleString()}/mo`, difficulty:'medium', estimatedTime:'Ongoing', category:'Marketing' });
+  plan.ninetyDay.push({ id:'90d-2', task:'Build customer loyalty/referral program', priority:'high', expectedImpact:'+15-25% organic acquisition', difficulty:'hard', estimatedTime:'4-6 weeks', category:'Growth' });
+  plan.ninetyDay.push({ id:'90d-3', task:'Scale highest-ROAS channel by 50%', priority:'high', expectedImpact:`+${cs(entry)}${Math.round(entry.revenue*0.08).toLocaleString()}/mo`, difficulty:'medium', estimatedTime:'Ongoing', category:'Marketing' });
   plan.ninetyDay.push({ id:'90d-4', task:'Implement churn prediction and proactive outreach', priority:'medium', expectedImpact:'-30% churn rate', difficulty:'hard', estimatedTime:'4-6 weeks', category:'Retention' });
-
-  // Long-Term
-  plan.longTerm.push({ id:'lt-1', task:`Scale to ${cs(entry)}${Math.round(entry.revenue*2/1000)}K/mo revenue (2x growth)`, priority:'critical', expectedImpact:'Double the business', difficulty:'hard', estimatedTime:'12-18 months', category:'Growth' });
+  plan.longTerm.push({ id:'lt-1', task:`Scale to ${cs(entry)}${Math.round(entry.revenue*2/1000)}K/mo revenue`, priority:'critical', expectedImpact:'Double the business', difficulty:'hard', estimatedTime:'12-18 months', category:'Growth' });
   plan.longTerm.push({ id:'lt-2', task:'Expand into adjacent market or geography', priority:'high', expectedImpact:'+30-50% addressable market', difficulty:'hard', estimatedTime:'6-12 months', category:'Expansion' });
-  plan.longTerm.push({ id:'lt-3', task:'Build competitive moat through product innovation', priority:'high', expectedImpact:'Sustainable advantage', difficulty:'hard', estimatedTime:'6-18 months', category:'Strategy' });
-  plan.longTerm.push({ id:'lt-4', task:'Achieve operational excellence with full automation stack', priority:'medium', expectedImpact:'40%+ efficiency gain', difficulty:'hard', estimatedTime:'12-24 months', category:'Operations' });
+  plan.longTerm.push({ id:'lt-3', task:'Build competitive moat', priority:'high', expectedImpact:'Sustainable advantage', difficulty:'hard', estimatedTime:'6-18 months', category:'Strategy' });
+  plan.longTerm.push({ id:'lt-4', task:'Achieve operational excellence', priority:'medium', expectedImpact:'40%+ efficiency gain', difficulty:'hard', estimatedTime:'12-24 months', category:'Operations' });
   return plan;
 };
 
@@ -233,7 +227,7 @@ const generateAnalysis = (entry: BusinessEntry, prev?: BusinessEntry, leaks?: Le
   const summary = revenueGrowth > 0
     ? `Revenue grew ${revenueGrowth.toFixed(1)}% to $${entry.revenue.toLocaleString()}. Margin ${profitMargin.toFixed(1)}%. ${openLeaks.length} leak${openLeaks.length!==1?'s':''} detected. ${opportunities.length} opportunities identified.`
     : `Revenue declined ${Math.abs(revenueGrowth).toFixed(1)}%. Immediate attention on ${openLeaks.length} leak${openLeaks.length!==1?'s':''}.`;
-  return { id:`a-${entry.id}`, entryId:entry.id, date:entry.date, profitScore:scoreBreakdown.overall, profitScoreBreakdown:scoreBreakdown, revenueGrowth, expenseGrowth, profitGrowth, profitMargin, summary, leaks:leaks||[], focusItems:focus||[], opportunities };
+  return { _id:`a-${entry._id}`, entryId:entry._id, date:entry.date, profitScore:scoreBreakdown.overall, profitScoreBreakdown:scoreBreakdown, revenueGrowth, expenseGrowth, profitGrowth, profitMargin, summary, leaks:leaks||[], focusItems:focus||[], opportunities };
 };
 
 // ── CONTEXT INTERFACE ──────────────────────────────────────────────────
@@ -241,66 +235,78 @@ interface BusinessContextType {
   entries: BusinessEntry[]; analyses: AnalysisRecord[];
   currentEntry: BusinessEntry | null; currentAnalysis: AnalysisRecord | null;
   allLeaks: LeakFinding[]; allFocusItems: FocusItem[];
-  goals: Goal[]; addGoal: (g: Omit<Goal,'id'|'createdAt'|'status'>) => void; updateGoal: (id:string, updates:Partial<Goal>) => void; deleteGoal: (id:string) => void;
-  addEntry: (entry: Omit<BusinessEntry,'id'>) => void;
-  deleteEntry: (id: string) => void;
+  goals: Goal[]; addGoal: (g: Omit<Goal,'_id'|'createdAt'|'status'>) => void; updateGoal: (id:string, updates:Partial<Goal>) => void; deleteGoal: (id:string) => void;
+  addEntry: (entry: Omit<BusinessEntry,'_id'>) => Promise<void>;
+  deleteEntry: (id: string) => Promise<void>;
   getEntryAnalysis: (id:string) => AnalysisRecord | undefined;
   getTrends: () => { date:string; revenue:number; expenses:number; profit:number; margin:number; score:number }[];
   getGrowthRates: () => { revenueGrowth:number; expenseGrowth:number; profitGrowth:number; marginDelta:number };
   getActionPlan: () => ActionPlan;
   getIndustryBenchmark: () => IndustryBenchmark;
   getForecast: (months:number) => { date:string; revenue:number; expenses:number; profit:number }[];
+  loading: boolean;
 }
 
 const BusinessContext = createContext<BusinessContextType>({
   entries:[], analyses:[], currentEntry:null, currentAnalysis:null,
   allLeaks:[], allFocusItems:[], goals:[],
   addGoal:()=>{}, updateGoal:()=>{}, deleteGoal:()=>{},
-  addEntry:()=>{}, deleteEntry:()=>{}, getEntryAnalysis:()=>undefined,
+  addEntry:async ()=>{}, deleteEntry:async ()=>{}, getEntryAnalysis:()=>undefined,
   getTrends:()=>[], getGrowthRates:()=>({revenueGrowth:0,expenseGrowth:0,profitGrowth:0,marginDelta:0}),
   getActionPlan:()=>({sevenDay:[],thirtyDay:[],ninetyDay:[],longTerm:[]}),
   getIndustryBenchmark:()=>industryBenchmarks.SaaS,
-  getForecast:()=>[],
+  getForecast:()=>[], loading: true,
 });
 
-// ── PROVIDER ───────────────────────────────────────────────────────────
 export function BusinessProvider({ children }: { children: ReactNode }) {
-  const [entries, setEntries] = useState<BusinessEntry[]>(() => {
-    try { const s=localStorage.getItem('nexora-entries-v3'); return s?JSON.parse(s):seedEntries; } catch{ return seedEntries; }
-  });
-  const [analyses, setAnalyses] = useState<AnalysisRecord[]>(() => {
-    try {
-      const s = localStorage.getItem('nexora-analyses-v3');
-      if (s) return JSON.parse(s);
-    } catch {}
-    return [];
-  });
-  const [goals, setGoals] = useState<Goal[]>(() => {
-    try { const s=localStorage.getItem('nexora-goals'); return s?JSON.parse(s):seedGoals(); } catch{ return seedGoals(); }
-  });
+  const [entries, setEntries] = useState<BusinessEntry[]>([]);
+  const [analyses, setAnalyses] = useState<AnalysisRecord[]>([]);
+  const [goals, setGoals] = useState<Goal[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  useEffect(()=>{ localStorage.setItem('nexora-entries-v3', JSON.stringify(entries)); },[entries]);
-  useEffect(()=>{ localStorage.setItem('nexora-analyses-v3', JSON.stringify(analyses)); },[analyses]);
-  useEffect(()=>{ localStorage.setItem('nexora-goals', JSON.stringify(goals)); },[goals]);
+  useEffect(() => {
+    Promise.all([
+      api.get('/business/entries').then(setEntries).catch(() => {}),
+      api.get('/business/analyses').then(setAnalyses).catch(() => {}),
+      api.get('/business/goals').then(setGoals).catch(() => {}),
+    ]).finally(() => setLoading(false));
+  }, []);
 
   const currentEntry = entries[entries.length-1]||null;
   const currentAnalysis = analyses[analyses.length-1]||null;
   const allLeaks = analyses.flatMap(a=>a.leaks);
   const allFocusItems = analyses.length > 0 ? analyses[analyses.length-1].focusItems : [];
 
-  const addEntry = (d: Omit<BusinessEntry,'id'>) => {
-    const ne: BusinessEntry = {...d, id:`e${Date.now()}`};
+  const addEntry = async (d: Omit<BusinessEntry,'_id'>) => {
+    const entry = await api.post('/business/entries', d);
+    setEntries(p => [...p, entry]);
     const pv = entries[entries.length-1];
-    const lk = generateLeaks(ne,pv); const fc = generateFocusItems(ne,lk,pv);
-    setEntries(p=>[...p,ne]); setAnalyses(p=>[...p,generateAnalysis(ne,pv,lk,fc)]);
+    const lk = generateLeaks(entry, pv);
+    const fc = generateFocusItems(entry, lk, pv);
+    const analysis = await api.post('/business/analyses', generateAnalysis(entry, pv, lk, fc));
+    setAnalyses(p => [...p, analysis]);
   };
-  const deleteEntry = (id: string) => {
-    setEntries(p => p.filter(e => e.id !== id));
+
+  const deleteEntry = async (id: string) => {
+    await api.delete(`/business/entries/${id}`);
+    setEntries(p => p.filter(e => e._id !== id));
     setAnalyses(p => p.filter(a => a.entryId !== id));
   };
-  const addGoal = (g: Omit<Goal,'id'|'createdAt'|'status'>) => setGoals(p=>[...p,{...g, id:`g${Date.now()}`, createdAt:new Date().toISOString(), status:'active'}]);
-  const updateGoal = (id:string, u:Partial<Goal>) => setGoals(p=>p.map(g=>g.id===id?{...g,...u}:g));
-  const deleteGoal = (id:string) => setGoals(p=>p.filter(g=>g.id!==id));
+
+  const addGoal = async (g: Omit<Goal,'_id'|'createdAt'|'status'>) => {
+    const goal = await api.post('/business/goals', { ...g, createdAt: new Date().toISOString(), status: 'active' });
+    setGoals(p => [...p, goal]);
+  };
+
+  const updateGoal = async (id: string, u: Partial<Goal>) => {
+    const goal = await api.put(`/business/goals/${id}`, u);
+    setGoals(p => p.map(g => g._id === id ? goal : g));
+  };
+
+  const deleteGoal = async (id: string) => {
+    await api.delete(`/business/goals/${id}`);
+    setGoals(p => p.filter(g => g._id !== id));
+  };
 
   const getEntryAnalysis = (id:string) => analyses.find(a=>a.entryId===id);
   const getTrends = () => entries.map((e,i)=>({ date:new Date(e.date).toLocaleDateString('en-US',{month:'short',year:'2-digit'}), revenue:e.revenue, expenses:e.expenses, profit:e.profit, margin:Number(((e.profit/e.revenue)*100).toFixed(1)), score:analyses[i]?.profitScore||0 }));
@@ -332,14 +338,10 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <BusinessContext.Provider value={{ entries, analyses, currentEntry, currentAnalysis, allLeaks, allFocusItems, goals, addGoal, updateGoal, deleteGoal, addEntry, deleteEntry, getEntryAnalysis, getTrends, getGrowthRates, getActionPlan, getIndustryBenchmark, getForecast }}>
+    <BusinessContext.Provider value={{ entries, analyses, currentEntry, currentAnalysis, allLeaks, allFocusItems, goals, addGoal, updateGoal, deleteGoal, addEntry, deleteEntry, getEntryAnalysis, getTrends, getGrowthRates, getActionPlan, getIndustryBenchmark, getForecast, loading }}>
       {children}
     </BusinessContext.Provider>
   );
 }
 
 export const useBusiness = () => useContext(BusinessContext);
-
-function seedGoals(): Goal[] {
-  return [];
-}
