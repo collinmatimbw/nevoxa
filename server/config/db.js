@@ -16,19 +16,18 @@ if (existsSync(envPath)) {
 
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/nexora';
 
+export let mongoOk = false;
+
 export async function connectDB() {
+  const src = process.env.MONGO_URI ? 'Render env var' : 'default fallback';
+  console.log(`MONGO_URI source: ${src}`);
+  console.log(`MONGO_URI value: ${MONGO_URI.replace(/\/\/.+@/, '//***:***@')}`);
   try {
     await mongoose.connect(MONGO_URI);
     console.log('MongoDB connected');
+    mongoOk = true;
   } catch (err) {
     console.error('MongoDB connection error:', err.message);
-    console.error('');
-    console.error('  To use MongoDB:');
-    console.error('    1. Install MongoDB locally (mongod), or');
-    console.error('    2. Use MongoDB Atlas (free tier):');
-    console.error('       Create a .env file with:');
-    console.error('       MONGO_URI=mongodb+srv://<user>:<pass>@<cluster>.mongodb.net/nexora');
-    console.error('');
-    process.exit(1);
+    console.warn('Server running without DB — API routes will fail with 503.');
   }
 }
