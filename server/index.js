@@ -4,6 +4,8 @@ import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { existsSync } from 'fs';
 import { connectDB } from './config/db.js';
+
+console.log('Starting server v3 (userId string + error handler) ...');
 import authRoutes from './routes/auth.js';
 import businessRoutes from './routes/business.js';
 import platformRoutes from './routes/platform.js';
