@@ -1,7 +1,7 @@
 import mongoose from 'mongoose';
 
 const goalSchema = new mongoose.Schema({
-  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  userId: { type: String, ref: 'User', required: true },
   title: String,
   type: { type: String, enum: ['revenue', 'profit', 'expenses', 'retention', 'growth', 'custom'] },
   targetValue: Number,

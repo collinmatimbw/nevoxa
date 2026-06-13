@@ -1,7 +1,7 @@
 import mongoose from 'mongoose';
 
 const analysisSchema = new mongoose.Schema({
-  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  userId: { type: String, ref: 'User', required: true },
   entryId: { type: mongoose.Schema.Types.ObjectId, ref: 'BusinessEntry' },
   date: String,
   profitScore: Number,
