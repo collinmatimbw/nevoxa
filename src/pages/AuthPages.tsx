@@ -20,11 +20,11 @@ export default function AuthPages({ mode, onNavigate }: AuthPagesProps) {
   const [step, setStep] = useState(1);
   const [loginError, setLoginError] = useState('');
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError('');
     if (mode === 'login') {
-      const success = login(email, password);
+      const success = await login(email, password);
       if (!success) {
         setLoginError('Invalid email or password. Please sign up first.');
         return;
