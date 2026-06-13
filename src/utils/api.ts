@@ -1,4 +1,4 @@
-const BASE = '/api';
+const BASE = import.meta.env.DEV ? '/api' : 'https://nevoxa.onrender.com/api';
 
 async function request(path: string, options: RequestInit = {}) {
   const token = localStorage.getItem('nexora-token');
