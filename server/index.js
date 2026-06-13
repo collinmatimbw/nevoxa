@@ -27,5 +27,11 @@ if (existsSync(distPath)) {
   app.get('*', (_req, res) => res.sendFile(resolve(distPath, 'index.html')));
 }
 
+// Global error handler (prevents crashes from async route errors)
+app.use((err, _req, res, _next) => {
+  console.error('Unhandled error:', err);
+  res.status(500).json({ error: err.message || 'Internal server error' });
+});
+
 await connectDB();
 app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
